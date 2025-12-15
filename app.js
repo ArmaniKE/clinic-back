@@ -16,10 +16,7 @@ dotenv.config();
 
 const app = express();
 
-const FRONTEND_URL = process.env.NODE_ENV === "production"
-  ? "https://clinic-front-ashen.vercel.app"
-  : "http://localhost:5173";
-
+const FRONTEND_URL = "https://clinic-front-ashen.vercel.app";
 app.use(cors({ origin: FRONTEND_URL, credentials: true }));
 app.use(express.json());
 
