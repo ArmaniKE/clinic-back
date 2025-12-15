@@ -15,7 +15,13 @@ import usersRouter from "./routes/users.js";
 dotenv.config();
 
 const app = express();
-app.use(cors());
+
+const FRONTEND_URL =
+  process.env.NODE_ENV === "production"
+    ? "https://clinic-front-ashen.vercel.app"
+    : "http://localhost:5173";
+
+app.use(cors({ origin: FRONTEND_URL, credentials: true }));
 app.use(express.json());
 
 app.use("/auth", authRoutes);
@@ -29,7 +35,7 @@ app.use("/users", usersRouter);
 
 const server = http.createServer(app);
 export const io = new Server(server, {
-  cors: { origin: "http://localhost:5173", credentials: true },
+  cors: { origin: FRONTEND_URL, credentials: true },
 });
 
 io.on("connection", (socket) => {
@@ -37,5 +43,5 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => console.log("User disconnected:", socket.id));
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log("Server on :3000"));
+const PORT = process.env.PORT || 4000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
