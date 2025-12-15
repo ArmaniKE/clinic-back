@@ -16,10 +16,7 @@ dotenv.config();
 
 const app = express();
 
-const FRONTEND_URL =
-  process.env.NODE_ENV === "production"
-    ? "https://clinic-front-ashen.vercel.app"
-    : "http://localhost:5173";
+const FRONTEND_URL = "http://localhost:5173";
 
 app.use(cors({ origin: FRONTEND_URL, credentials: true }));
 app.use(express.json());
@@ -43,5 +40,5 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => console.log("User disconnected:", socket.id));
 });
 
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
