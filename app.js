@@ -16,9 +16,18 @@ dotenv.config();
 
 const app = express();
 
-const FRONTEND_URL = "http://localhost:5173";
+const FRONTEND_URLS = [
+  "http://localhost:5173",
+  process.env.FRONTEND_URL,
+].filter(Boolean);
 
-app.use(cors({ origin: FRONTEND_URL, credentials: true }));
+app.use(
+  cors({
+    origin: FRONTEND_URLS,
+    credentials: true,
+  })
+);
+
 app.use(express.json());
 
 app.use("/auth", authRoutes);
@@ -32,13 +41,21 @@ app.use("/users", usersRouter);
 
 const server = http.createServer(app);
 export const io = new Server(server, {
-  cors: { origin: FRONTEND_URL, credentials: true },
+  cors: {
+    origin: FRONTEND_URLS,
+    credentials: true,
+  },
 });
 
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
-  socket.on("disconnect", () => console.log("User disconnected:", socket.id));
+
+  socket.on("disconnect", () => {
+    console.log("User disconnected:", socket.id);
+  });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
