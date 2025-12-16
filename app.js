@@ -40,12 +40,15 @@ app.use("/dashboard", dashboardRouter);
 app.use("/users", usersRouter);
 
 const server = http.createServer(app);
-export const io = new Server(server, {
+
+const io = new Server(server, {
   cors: {
     origin: FRONTEND_URLS,
     credentials: true,
   },
 });
+
+app.locals.io = io;
 
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
@@ -55,7 +58,8 @@ io.on("connection", (socket) => {
   });
 });
 
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
