@@ -160,57 +160,136 @@ router.post("/", requireAuth(["patient"]), async (req, res) => {
   }
 });
 
-router.delete("/:id", requireAuth(["patient", "admin"]), async (req, res) => {
-  const id = Number(req.params.id);
-  const userId = req.user.id;
+// Обновление приёма (изменение даты/времени/причины/статуса)
+router.put(
+  "/:id",
+  requireAuth(["patient", "doctor", "admin"]),
+  async (req, res) => {
+    const id = Number(req.params.id);
+    const userId = req.user.id;
+    const { date, time, reason, status } = req.body;
 
-  try {
-    const appointmentRes = await pool.query(
-      `SELECT * FROM appointments WHERE id = $1`,
-      [id]
-    );
-
-    if (!appointmentRes.rows.length) {
-      return res.status(404).json({ error: "Приём не найден" });
-    }
-
-    const appointment = appointmentRes.rows[0];
-
-    if (req.user.role === "patient" && appointment.patient_id !== userId) {
-      return res.status(403).json({ error: "Нет доступа" });
-    }
-
-    await pool.query(`DELETE FROM appointments WHERE id = $1`, [id]);
-
-    const doctorRes = await pool.query(
-      `SELECT u.* FROM doctors d LEFT JOIN users u ON d.user_id = u.id WHERE d.user_id = $1`,
-      [appointment.doctor_id]
-    );
-    const patientRes = await pool.query(
-      `SELECT * FROM users WHERE id = $1`,
-      [appointment.patient_id]
-    );
-
-    if (doctorRes.rows.length && patientRes.rows.length) {
-      sendAppointmentCancelledEmail(
-        doctorRes.rows[0].email,
-        doctorRes.rows[0].full_name,
-        {
-          date: new Date(appointment.date).toLocaleDateString("ru-RU"),
-          time: appointment.time,
-          patientName: patientRes.rows[0].full_name,
-        }
+    try {
+      const existingRes = await pool.query(
+        `SELECT * FROM appointments WHERE id = $1`,
+        [id]
       );
+
+      if (!existingRes.rows.length) {
+        return res.status(404).json({ error: "Приём не найден" });
+      }
+
+      const existing = existingRes.rows[0];
+
+      if (
+        (req.user.role === "patient" && existing.patient_id !== userId) ||
+        (req.user.role === "doctor" && existing.doctor_id !== userId)
+      ) {
+        return res.status(403).json({ error: "Нет доступа" });
+      }
+
+      const updateFields = [];
+      const updateValues = [];
+      let paramIndex = 1;
+
+      if (date !== undefined) {
+        updateFields.push(`date = $${paramIndex++}`);
+        updateValues.push(date);
+      }
+      if (time !== undefined) {
+        updateFields.push(`time = $${paramIndex++}`);
+        updateValues.push(time);
+      }
+      if (reason !== undefined) {
+        updateFields.push(`reason = $${paramIndex++}`);
+        updateValues.push(reason);
+      }
+      if (status !== undefined && req.user.role === "admin") {
+        updateFields.push(`status = $${paramIndex++}`);
+        updateValues.push(status);
+      }
+
+      if (updateFields.length === 0) {
+        return res.status(400).json({ error: "Нет полей для обновления" });
+      }
+
+      updateValues.push(id);
+      const updateQuery = `
+        UPDATE appointments
+        SET ${updateFields.join(", ")}
+        WHERE id = $${paramIndex}
+        RETURNING *
+      `;
+
+      const updatedRes = await pool.query(updateQuery, updateValues);
+      const updated = updatedRes.rows[0];
+
+      req.app.locals.io.emit("appointment:updated", updated);
+
+      res.json(updated);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: "Database error" });
     }
-
-    req.app.locals.io.emit("appointment:deleted", appointment);
-
-    res.json({ ok: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Database error" });
   }
-});
+);
+
+router.delete(
+  "/:id",
+  requireAuth(["patient", "admin", "doctor"]),
+  async (req, res) => {
+    const id = Number(req.params.id);
+    const userId = req.user.id;
+
+    try {
+      const appointmentRes = await pool.query(
+        `SELECT * FROM appointments WHERE id = $1`,
+        [id]
+      );
+
+      if (!appointmentRes.rows.length) {
+        return res.status(404).json({ error: "Приём не найден" });
+      }
+
+      const appointment = appointmentRes.rows[0];
+
+      if (req.user.role === "patient" && appointment.patient_id !== userId) {
+        return res.status(403).json({ error: "Нет доступа" });
+      }
+      const updatedRes = await pool.query(
+        `UPDATE appointments SET status = 'cancelled' WHERE id = $1 RETURNING *`,
+        [id]
+      );
+      const updatedAppointment = updatedRes.rows[0];
+
+      const doctorRes = await pool.query(
+        `SELECT u.* FROM doctors d LEFT JOIN users u ON d.user_id = u.id WHERE d.user_id = $1`,
+        [appointment.doctor_id]
+      );
+      const patientRes = await pool.query(`SELECT * FROM users WHERE id = $1`, [
+        appointment.patient_id,
+      ]);
+
+      if (doctorRes.rows.length && patientRes.rows.length) {
+        sendAppointmentCancelledEmail(
+          doctorRes.rows[0].email,
+          doctorRes.rows[0].full_name,
+          {
+            date: new Date(updatedAppointment.date).toLocaleDateString("ru-RU"),
+            time: updatedAppointment.time,
+            patientName: patientRes.rows[0].full_name,
+          }
+        );
+      }
+      req.app.locals.io.emit("appointment:deleted", updatedAppointment);
+
+      res.json({ ok: true, appointment: updatedAppointment });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: "Database error" });
+    }
+  }
+);
 
 router.get("/admin/all", requireAuth(["admin"]), async (req, res) => {
   try {
